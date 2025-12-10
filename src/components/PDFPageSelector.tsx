@@ -5,10 +5,11 @@ import { convertPDFToImages, PDFPageImage } from '../utils/pdfToImage';
 interface PDFPageSelectorProps {
     pdfFile: File;
     onPageSelect: (imageData: string) => void;
+    onAllPagesSelect: (pages: PDFPageImage[]) => void;
     onBack: () => void;
 }
 
-export function PDFPageSelector({ pdfFile, onPageSelect, onBack }: PDFPageSelectorProps) {
+export function PDFPageSelector({ pdfFile, onPageSelect, onAllPagesSelect, onBack }: PDFPageSelectorProps) {
     const [pages, setPages] = useState<PDFPageImage[]>([]);
     const [currentPage, setCurrentPage] = useState<number>(0);
     const [isLoading, setIsLoading] = useState(true);
@@ -38,6 +39,12 @@ export function PDFPageSelector({ pdfFile, onPageSelect, onBack }: PDFPageSelect
     const handleSelectPage = () => {
         if (pages[currentPage]) {
             onPageSelect(pages[currentPage].imageData);
+        }
+    };
+
+    const handleSelectAllPages = () => {
+        if (pages.length > 0) {
+            onAllPagesSelect(pages);
         }
     };
 
@@ -149,13 +156,19 @@ export function PDFPageSelector({ pdfFile, onPageSelect, onBack }: PDFPageSelect
                         </button>
                     </div>
 
-                    {/* Select button */}
-                    <div className="flex justify-center">
+                    {/* Select buttons */}
+                    <div className="flex justify-center gap-4">
                         <button
                             onClick={handleSelectPage}
                             className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg hover:shadow-blue-600/20 transition-all"
                         >
                             Select This Page for OCR
+                        </button>
+                        <button
+                            onClick={handleSelectAllPages}
+                            className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg hover:shadow-green-600/20 transition-all"
+                        >
+                            OCR All Pages ({pages.length})
                         </button>
                     </div>
                 </div>

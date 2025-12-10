@@ -4,11 +4,13 @@ import { OCRViewer } from './components/OCRViewer';
 import { ImageUploader } from './components/ImageUploader';
 import { PDFPageSelector } from './components/PDFPageSelector';
 import { Settings } from './components/Settings';
+import { PDFPageImage } from './utils/pdfToImage';
 
 function App() {
     const [currentView, setCurrentView] = useState<'upload' | 'settings'>('upload');
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
+    const [selectedPages, setSelectedPages] = useState<PDFPageImage[] | null>(null);
     const [isConnected, setIsConnected] = useState<boolean>(false);
 
     useEffect(() => {
@@ -28,6 +30,7 @@ function App() {
         if (view === 'settings') {
             setSelectedImage(null);
             setSelectedPDF(null);
+            setSelectedPages(null);
         }
     };
 
@@ -35,17 +38,26 @@ function App() {
         if (file.type === 'application/pdf') {
             setSelectedPDF(file);
             setSelectedImage(null);
+            setSelectedPages(null);
         }
     };
 
     const handleImageSelect = (base64: string) => {
         setSelectedImage(base64);
         setSelectedPDF(null);
+        setSelectedPages(null);
     };
 
     const handlePDFPageSelect = (imageData: string) => {
         setSelectedImage(imageData);
         setSelectedPDF(null);
+        setSelectedPages(null);
+    };
+
+    const handleAllPagesSelect = (pages: PDFPageImage[]) => {
+        setSelectedPages(pages);
+        setSelectedPDF(null);
+        setSelectedImage(null);
     };
 
     const renderContent = () => {
@@ -53,11 +65,21 @@ function App() {
             return <Settings />;
         }
 
+        if (selectedPages) {
+            return (
+                <OCRViewer
+                    pages={selectedPages}
+                    onBack={() => setSelectedPages(null)}
+                />
+            );
+        }
+
         if (selectedPDF) {
             return (
                 <PDFPageSelector
                     pdfFile={selectedPDF}
                     onPageSelect={handlePDFPageSelect}
+                    onAllPagesSelect={handleAllPagesSelect}
                     onBack={() => setSelectedPDF(null)}
                 />
             );
