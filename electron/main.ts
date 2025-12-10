@@ -156,6 +156,47 @@ ipcMain.handle('ollama:run-ocr', async (event, { imageBase64, model }) => {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let accumulatedText = '';
+
+        // Function to detect repeated sentences
+        const detectRepetition = (text: string): boolean => {
+            // Split text into sentences (by periods, newlines, or other sentence endings)
+            const sentences = text.split(/[。\.!\?！？\n]+/).filter(s => s.trim().length > 10);
+
+            if (sentences.length < 3) return false;
+
+            // Check if the last 3 sentences contain repetition
+            const lastSentences = sentences.slice(-6); // Check last 6 sentences
+
+            // Count occurrences of each sentence
+            const sentenceCount = new Map<string, number>();
+            for (const sentence of lastSentences) {
+                const trimmed = sentence.trim();
+                if (trimmed.length > 10) { // Only check substantial sentences
+                    sentenceCount.set(trimmed, (sentenceCount.get(trimmed) || 0) + 1);
+                }
+            }
+
+            // If any sentence appears 3 or more times, it's a repetition
+            for (const count of sentenceCount.values()) {
+                if (count >= 3) {
+                    return true;
+                }
+            }
+
+            // Also check for exact repeating patterns in the last part of text
+            const lastChars = text.slice(-500); // Check last 500 characters
+            const halfLength = Math.floor(lastChars.length / 2);
+            if (halfLength > 50) {
+                const firstHalf = lastChars.slice(0, halfLength);
+                const secondHalf = lastChars.slice(halfLength, halfLength * 2);
+                if (firstHalf === secondHalf) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
 
         while (true) {
             const { done, value } = await reader.read();
@@ -170,6 +211,16 @@ ipcMain.handle('ollama:run-ocr', async (event, { imageBase64, model }) => {
                 try {
                     const json = JSON.parse(line);
                     if (json.response) {
+                        accumulatedText += json.response;
+
+                        // Check for repetition
+                        if (detectRepetition(accumulatedText)) {
+                            console.log('Repetition detected, stopping OCR');
+                            reader.cancel();
+                            sender.send('ocr-error', 'Repetition detected: The model is generating repeated sentences. OCR stopped.');
+                            return { success: false, error: 'Repetition detected' };
+                        }
+
                         sender.send('ocr-chunk', json.response);
                     }
                     if (json.error) {
