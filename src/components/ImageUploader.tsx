@@ -1,33 +1,60 @@
 import { Upload } from 'lucide-react';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 
 interface ImageUploaderProps {
     onImageSelect: (base64: string) => void;
+    onFileSelect?: (file: File) => void;
 }
 
-export function ImageUploader({ onImageSelect }: ImageUploaderProps) {
+export function ImageUploader({ onImageSelect, onFileSelect }: ImageUploaderProps) {
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const processFile = useCallback(async (file: File) => {
+        setIsProcessing(true);
+        setError(null);
+
+        try {
+            if (file.type === 'application/pdf') {
+                // Pass PDF file to parent for page selection
+                if (onFileSelect) {
+                    onFileSelect(file);
+                } else {
+                    // Fallback: just show error if onFileSelect not provided
+                    setError('PDF handling not configured');
+                }
+            } else if (file.type.startsWith('image/')) {
+                // Handle image files
+                const reader = new FileReader();
+                reader.onload = () => {
+                    onImageSelect(reader.result as string);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                setError('Unsupported file type. Please upload an image or PDF file.');
+            }
+        } catch (err) {
+            console.error('Error processing file:', err);
+            setError(`Failed to process file: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        } finally {
+            setIsProcessing(false);
+        }
+    }, [onImageSelect, onFileSelect]);
+
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         const file = e.dataTransfer.files[0];
-        if (file && file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = () => {
-                onImageSelect(reader.result as string);
-            };
-            reader.readAsDataURL(file);
+        if (file) {
+            processFile(file);
         }
-    }, [onImageSelect]);
+    }, [processFile]);
 
     const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = () => {
-                onImageSelect(reader.result as string);
-            };
-            reader.readAsDataURL(file);
+            processFile(file);
         }
-    }, [onImageSelect]);
+    }, [processFile]);
 
     return (
         <div
@@ -36,20 +63,32 @@ export function ImageUploader({ onImageSelect }: ImageUploaderProps) {
             onDrop={handleDrop}
         >
             <div className="w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center mb-6">
-                <Upload className="w-10 h-10 text-gray-400" />
+                {isProcessing ? (
+                    <div className="w-10 h-10 border-4 border-gray-400 border-t-blue-500 rounded-full animate-spin" />
+                ) : (
+                    <Upload className="w-10 h-10 text-gray-400" />
+                )}
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Upload an Image</h2>
+            <h2 className="text-2xl font-bold text-white mb-2">
+                {isProcessing ? 'Processing...' : 'Upload an Image or PDF'}
+            </h2>
             <p className="text-gray-400 mb-8 text-center max-w-md">
-                Drag and drop your image here, or click to browse.
-                Supports JPG, PNG.
+                Drag and drop your file here, or click to browse.
+                Supports JPG, PNG, and PDF files.
             </p>
-            <label className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg cursor-pointer transition-colors">
+            {error && (
+                <div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-200 text-sm max-w-md">
+                    {error}
+                </div>
+            )}
+            <label className={`px-6 py-3 ${isProcessing ? 'bg-gray-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'} text-white font-medium rounded-lg transition-colors`}>
                 Browse Files
                 <input
                     type="file"
                     className="hidden"
-                    accept="image/*"
+                    accept="image/*,application/pdf"
                     onChange={handleChange}
+                    disabled={isProcessing}
                 />
             </label>
         </div>
