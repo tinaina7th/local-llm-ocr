@@ -1,65 +1,92 @@
 import { useState } from 'react';
 import { ArrowLeft, Play, Save, Copy, Check, FileText } from 'lucide-react';
+import { PDFPageImage } from '../utils/pdfToImage';
 
 interface OCRViewerProps {
-    image: string;
+    image?: string;
+    pages?: PDFPageImage[];
     onBack: () => void;
 }
 
-export function OCRViewer({ image, onBack }: OCRViewerProps) {
+export function OCRViewer({ image, pages, onBack }: OCRViewerProps) {
     const [result, setResult] = useState<string>('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [currentProcessingPage, setCurrentProcessingPage] = useState<number>(0);
+    const [totalPages, setTotalPages] = useState<number>(0);
+
+    const isMultiPage = !!pages && pages.length > 0;
+    const displayImage = isMultiPage ? (pages[0]?.imageData || '') : (image || '');
+
+    const processImage = async (imageData: string): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const base64Data = imageData.split(',')[1];
+            let pageResult = '';
+
+            if (!window.electronAPI) {
+                reject('Electron API not available');
+                return;
+            }
+
+            if (!window.electronAPI.onOCRChunk) {
+                reject('Application update pending. Please restart the application.');
+                return;
+            }
+
+            const removeChunkListener = window.electronAPI.onOCRChunk((chunk: string) => {
+                pageResult += chunk;
+                setResult(prev => prev + chunk);
+            });
+
+            const removeCompleteListener = window.electronAPI.onOCRComplete(() => {
+                removeChunkListener();
+                removeCompleteListener();
+                removeErrorListener();
+                resolve(pageResult);
+            });
+
+            const removeErrorListener = window.electronAPI.onOCRError((error: string) => {
+                console.error('OCR Error event:', error);
+                removeChunkListener();
+                removeCompleteListener();
+                removeErrorListener();
+                reject(error);
+            });
+
+            const model = localStorage.getItem('ocr_model') || 'deepseek-ocr';
+            window.electronAPI.runOCR(base64Data, model);
+        });
+    };
 
     const runOCR = async () => {
         setIsProcessing(true);
-        setResult(''); // Clear previous result
+        setResult('');
+
         try {
-            // Remove data:image/png;base64, prefix for Ollama
-            const base64Data = image.split(',')[1];
+            if (isMultiPage && pages) {
+                // Process multiple pages
+                setTotalPages(pages.length);
+                for (let i = 0; i < pages.length; i++) {
+                    setCurrentProcessingPage(i + 1);
+                    const pageHeader = `\n${'='.repeat(50)}\nPage ${i + 1} of ${pages.length}\n${'='.repeat(50)}\n\n`;
+                    setResult(prev => prev + pageHeader);
 
-            if (window.electronAPI) {
-                if (!window.electronAPI.onOCRChunk) {
-                    setResult('Error: Application update pending. Please restart the application to apply changes.');
-                    setIsProcessing(false);
-                    return;
+                    try {
+                        await processImage(pages[i].imageData);
+                        setResult(prev => prev + '\n\n');
+                    } catch (error) {
+                        setResult(prev => prev + `\nError processing page ${i + 1}: ${error}\n\n`);
+                    }
                 }
-
-                console.log('Setting up OCR event listeners');
-                // Setup event listeners
-                const removeChunkListener = window.electronAPI.onOCRChunk((chunk: string) => {
-                    console.log('Received chunk:', chunk.length);
-                    setResult(prev => prev + chunk);
-                });
-
-                const removeCompleteListener = window.electronAPI.onOCRComplete(() => {
-                    console.log('OCR Complete');
-                    setIsProcessing(false);
-                    removeChunkListener();
-                    removeCompleteListener();
-                    removeErrorListener();
-                });
-
-                const removeErrorListener = window.electronAPI.onOCRError((error: string) => {
-                    console.error('OCR Error event:', error);
-                    setResult(prev => prev + `\nError: ${error}`);
-                    setIsProcessing(false);
-                    removeChunkListener();
-                    removeCompleteListener();
-                    removeErrorListener();
-                });
-
-                const model = localStorage.getItem('ocr_model') || 'deepseek-ocr';
-                console.log('Starting OCR with model:', model);
-                await window.electronAPI.runOCR(base64Data, model);
-            } else {
-                // Fallback for browser mode (mock or error)
-                setResult('Error: Electron API not available. Please run in Electron.');
+                setIsProcessing(false);
+            } else if (image) {
+                // Process single image
+                await processImage(image);
                 setIsProcessing(false);
             }
         } catch (e) {
             console.error('OCR Exception:', e);
-            setResult(`Error: ${e}`);
+            setResult(prev => prev + `\nError: ${e}`);
             setIsProcessing(false);
         }
     };
@@ -89,17 +116,41 @@ export function OCRViewer({ image, onBack }: OCRViewerProps) {
                         <ArrowLeft className="w-4 h-4" />
                         Back
                     </button>
-                    <div className="text-sm font-medium text-gray-400">Original Image</div>
+                    <div className="text-sm font-medium text-gray-400">
+                        {isMultiPage ? `PDF Pages (${pages.length} pages)` : 'Original Image'}
+                    </div>
                 </div>
                 <div className="flex-1 p-4 overflow-auto flex items-center justify-center bg-black/20">
-                    <img src={image} alt="Source" className="max-w-full max-h-full object-contain rounded-lg shadow-lg" />
+                    {isMultiPage && pages ? (
+                        <div className="w-full h-full overflow-y-auto space-y-4">
+                            {pages.map((page, idx) => (
+                                <div key={idx} className="flex flex-col items-center">
+                                    <div className="text-xs text-gray-400 mb-2">Page {page.pageNumber}</div>
+                                    <img
+                                        src={page.imageData}
+                                        alt={`Page ${page.pageNumber}`}
+                                        className="max-w-full object-contain rounded-lg shadow-lg"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <img src={displayImage} alt="Source" className="max-w-full max-h-full object-contain rounded-lg shadow-lg" />
+                    )}
                 </div>
             </div>
 
             {/* Result Pane */}
             <div className="w-1/2 flex flex-col bg-gray-800">
                 <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-                    <div className="text-sm font-medium text-gray-400">OCR Result</div>
+                    <div className="text-sm font-medium text-gray-400">
+                        OCR Result
+                        {isProcessing && isMultiPage && totalPages > 0 && (
+                            <span className="ml-2 text-blue-400">
+                                (Processing page {currentProcessingPage} of {totalPages})
+                            </span>
+                        )}
+                    </div>
                     <div className="flex items-center gap-2">
                         {result && (
                             <>
