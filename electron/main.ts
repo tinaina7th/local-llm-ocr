@@ -184,14 +184,40 @@ ipcMain.handle('ollama:run-ocr', async (event, { imageBase64, model }) => {
                 }
             }
 
-            // Also check for exact repeating patterns in the last part of text
-            const lastChars = text.slice(-500); // Check last 500 characters
-            const halfLength = Math.floor(lastChars.length / 2);
-            if (halfLength > 50) {
-                const firstHalf = lastChars.slice(0, halfLength);
-                const secondHalf = lastChars.slice(halfLength, halfLength * 2);
-                if (firstHalf === secondHalf) {
-                    return true;
+            // Check for alternating patterns (A, B, A, B, ...)
+            // Look at the last 8 sentences to detect alternating repetition
+            if (sentences.length >= 4) {
+                const recentSentences = sentences.slice(-8);
+                for (let i = 0; i < recentSentences.length - 3; i++) {
+                    const a = recentSentences[i].trim();
+                    const b = recentSentences[i + 1].trim();
+                    const a2 = recentSentences[i + 2].trim();
+                    const b2 = recentSentences[i + 3].trim();
+
+                    // Check if we have A, B, A, B pattern
+                    if (a.length > 10 && b.length > 10 &&
+                        a === a2 && b === b2 && a !== b) {
+                        console.log('Alternating pattern detected:', a.substring(0, 50), '...', b.substring(0, 50), '...');
+                        return true;
+                    }
+                }
+            }
+
+            // Check for repeating chunks in the last part of text
+            const lastChars = text.slice(-600); // Check last 600 characters
+            if (lastChars.length >= 200) {
+                // Try different chunk sizes to detect repetition
+                for (let chunkSize = 50; chunkSize <= 300; chunkSize += 50) {
+                    if (lastChars.length < chunkSize * 2) continue;
+
+                    const lastChunk = lastChars.slice(-chunkSize);
+                    const previousChunk = lastChars.slice(-chunkSize * 2, -chunkSize);
+
+                    // If the last two chunks are identical, it's a repetition
+                    if (lastChunk === previousChunk && lastChunk.trim().length > 30) {
+                        console.log('Repeating chunk detected, size:', chunkSize);
+                        return true;
+                    }
                 }
             }
 
