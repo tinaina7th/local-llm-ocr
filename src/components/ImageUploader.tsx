@@ -23,20 +23,55 @@ export function ImageUploader({ onImageSelect, onFileSelect }: ImageUploaderProp
                     // Fallback: just show error if onFileSelect not provided
                     setError('PDF handling not configured');
                 }
+                setIsProcessing(false);
             } else if (file.type.startsWith('image/')) {
-                // Handle image files
+                // Handle image files - convert to PNG for consistency
                 const reader = new FileReader();
                 reader.onload = () => {
-                    onImageSelect(reader.result as string);
+                    const img = new Image();
+                    img.onload = () => {
+                        try {
+                            // Create canvas and convert to PNG
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+
+                            if (!ctx) {
+                                setError('Failed to create canvas context');
+                                setIsProcessing(false);
+                                return;
+                            }
+
+                            // Draw image and convert to PNG
+                            ctx.drawImage(img, 0, 0);
+                            const pngDataUrl = canvas.toDataURL('image/png');
+                            onImageSelect(pngDataUrl);
+                            setIsProcessing(false);
+                        } catch (err) {
+                            console.error('Error converting image:', err);
+                            setError(`Failed to convert image: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                            setIsProcessing(false);
+                        }
+                    };
+                    img.onerror = () => {
+                        setError('Failed to load image. The file may be corrupted or in an unsupported format.');
+                        setIsProcessing(false);
+                    };
+                    img.src = reader.result as string;
+                };
+                reader.onerror = () => {
+                    setError('Failed to read file.');
+                    setIsProcessing(false);
                 };
                 reader.readAsDataURL(file);
             } else {
                 setError('Unsupported file type. Please upload an image or PDF file.');
+                setIsProcessing(false);
             }
         } catch (err) {
             console.error('Error processing file:', err);
             setError(`Failed to process file: ${err instanceof Error ? err.message : 'Unknown error'}`);
-        } finally {
             setIsProcessing(false);
         }
     }, [onImageSelect, onFileSelect]);
