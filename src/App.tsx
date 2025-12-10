@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { OCRViewer } from './components/OCRViewer';
 import { ImageUploader } from './components/ImageUploader';
+import { PDFPageSelector } from './components/PDFPageSelector';
 import { Settings } from './components/Settings';
 
 function App() {
     const [currentView, setCurrentView] = useState<'upload' | 'settings'>('upload');
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
     const [isConnected, setIsConnected] = useState<boolean>(false);
 
     useEffect(() => {
@@ -25,12 +27,40 @@ function App() {
         setCurrentView(view);
         if (view === 'settings') {
             setSelectedImage(null);
+            setSelectedPDF(null);
         }
+    };
+
+    const handleFileSelect = (file: File) => {
+        if (file.type === 'application/pdf') {
+            setSelectedPDF(file);
+            setSelectedImage(null);
+        }
+    };
+
+    const handleImageSelect = (base64: string) => {
+        setSelectedImage(base64);
+        setSelectedPDF(null);
+    };
+
+    const handlePDFPageSelect = (imageData: string) => {
+        setSelectedImage(imageData);
+        setSelectedPDF(null);
     };
 
     const renderContent = () => {
         if (currentView === 'settings') {
             return <Settings />;
+        }
+
+        if (selectedPDF) {
+            return (
+                <PDFPageSelector
+                    pdfFile={selectedPDF}
+                    onPageSelect={handlePDFPageSelect}
+                    onBack={() => setSelectedPDF(null)}
+                />
+            );
         }
 
         if (selectedImage) {
@@ -42,7 +72,12 @@ function App() {
             );
         }
 
-        return <ImageUploader onImageSelect={setSelectedImage} />;
+        return (
+            <ImageUploader
+                onImageSelect={handleImageSelect}
+                onFileSelect={handleFileSelect}
+            />
+        );
     };
 
     return (
